@@ -331,11 +331,11 @@ func sendList(c *net.TCPConn) {
 		if client.Ghost {
 			continue
 		}
-
-		flags := ""
-		if client.Online {
-			flags += "O"
+		if !client.Online {
+			continue
 		}
+
+		flags := "O"
 		if client.Mute {
 			flags += "M"
 		}
