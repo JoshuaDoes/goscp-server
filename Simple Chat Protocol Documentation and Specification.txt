@@ -1,0 +1,173 @@
+Document Title: Simple Chat Protocol Documentation and Specification
+Document Author: Ken "Kealper" Piper
+Document Revision: 9
+Last Updated: June 3rd, 2015
+
+
+ABOUT THE PROTOCOL:
+
+This file documents the Simple Chat Protocol, or "kSCP" for short.
+kSCP uses the Transmission Control Protocol as it's transport layer,
+and usually operates on port 100, although there is no real default port.
+
+kSCP was created for the purpose of learning about client/server software,
+and uses a very simple packet structure that is easily parsable.
+
+
+THE PACKET STRUCTURE:
+
+All packets for kSCP begin with an opcode, and end with Carriage Return and Line Feed.
+If there is any other data in the packet that should be parsed out, it is separated
+by ASCII character code 001, or the Start of Header control character. Any time 
+you see "[SOH]" in this file, it refers to ASCII character 001. Any time you
+see "[CRLF]" in this file, it refers to a combination of the CR (ASCII 010) and
+LF (ASCII 013) characters.
+Example packet would look like: OPCODE[SOH]parameter-1[SOH]parameter-n[CRLF]
+
+
+USER FLAGS:
+
+This section covers various user "flags". Flags are used as a permission system,
+some flags give administration access to users, other take away access to certain things.
+Current flags:
+O - This flag is the default flag, it can be found on all online users.
+M - This flag will make the server ignore all MSG packets sent by the flagged user.
+A - General server administrator. Users with this flag can change the MOTD or kick/mute users.
+R - Root-level access flag, usually combined with flag A.
+    Flag R gives a user low-level access (like ban or server shutdown) and makes user invulnerable.
+    (Can't be kicked, banned, or muted)
+G - Ghost mode, any user with this flag will not show up in LIST requests, or when
+    joining or leaving the server. Useful for bots who should not be seen. (Service bots)
+B - This flag will set the user as away.
+
+
+SERVER TO CLIENT PACKETS:
+
+MSG - The client should have handling for a few different packets. The packet that
+will be used the most is the MSG packet, it has 2 parameters, parameter 1 is
+the username of the user who sent the message, and parameter 2 is the body of
+the message being sent. Some clients have the ability to send multi-line
+messages, clients choosing to support this should replace all carriage returns
+with "\n" and strip all line feeds before sending the packet.
+This packet can be used by anybody. No special user flags are needed, but if
+the sending user has flag "M" set, they will be muted and any MSG packets sent
+will be ignored. Key "users" are "Announcement" and "Message of the Day".
+These two users are not real, and are used by the server to announce different things.
+Example MSG packet: MSG[SOH]Foo[SOH]Lorem ipsum dolor si amet.[CRLF]
+
+PM - This packet has the same structure as MSG, but only the sending and receiving users
+can see it's contents.
+Example PM packet: PM[SOH]Foo[SOH]Lorem ipsum dolor si amet.[CRLF]
+
+LIST - This packet is used to give information on all clients that are connected.
+Information includes user flags for each user, usernames, and client versions.
+Each user's information is a parameter in the packet that looks like:
+[flags] username - client
+The number of parameters is variable based on the number of users currently connected
+but there is always going to be at least 1 parameter. If the user did not specify a client
+name, then "Unknown" will be in the place of the client name.
+Example LIST packet: LIST[SOH][OA] Foo - kChat v1 rev: 1[SOH][O] Lorem - Unknown[CRLF]
+
+KILL - This packet usually has one parameter. It is only to let the client know that the server
+is going to terminate the client connection. It is sent when the client is about to be
+kicked from the server, or if the client is requesting a username that is already in use, or blocked.
+The parameter that can be sent should be the reason for connection termination. It is not needed, but
+it is helpful to the end user.
+Example KILL packet: KILL[CRLF] -or- KILL[SOH]Username is already in use.[CRLF]
+
+PING - This packet has one parameter. It is not necessary to respond to this packet.
+The parameter contained is the server's local timestamp, it is sent every 30 seconds
+to all connected clients so the server can verify the connections are still active.
+If you choose to respond to this packet, send it's parameter back with a PONG opcode.
+Example PING packet: PING[SOH]123456789[CRLF]
+
+PONG - This is the response of a PING packet sent by the client. This packet has 1 parameter.
+The data in the parameter can be anything. The server sends back whatever data was in
+the parameter of the PING packet.
+If you wish to have the client check the connection, use the PING opcode with 1 parameter.
+(The parameter is usually a client-side timestamp, for judging latency, but can be anything)
+Example PONG packet: PONG[SOH]123456789[CRLF]
+
+RAW - This packet has two parameters. Clients who choose to implement the RAW packet should expect the
+unexpected, as this packet is used as a transport layer for client-to-client communication. Common uses are
+simple file transfer, client-to-client PING/PONG checks, and other things of that nature. This packet is
+similar in structure to PM, in that it is used for one-on-one interactions, and the first parameter is the
+sending user, while the second parameter is any data which is being transported.
+Example RAW packet: RAW[SOH]Foo[SOH]PING-123456789[CRLF]
+
+
+CLIENT TO SERVER PACKETS: (NOTE: This is not finished, experiment with these :P)
+
+JOIN - This MUST be sent as soon as the connection to the server has been established.
+This packet contains the username the user would like to use, and optionally, the
+client's "user-agent" string. Example 1 is the bare minimum for this packet, example
+2 is with the optional user-agent. The user-agent parameter can be anything, it is only
+used to show the client name in the LIST request.
+Example JOIN packet: JOIN[SOH]Foo[CRLF]
+Example JOIN packet: JOIN[SOH]Foo[SOH]kChat v1 rev: 1[CRLF]
+
+MSG - This uses the same format as the received MSG packet, but the username to send is
+the sender's username.
+Example MSG packet: MSG[SOH]Foo[SOH]Lorem ipsum dolor si amet.[CRLF]
+
+PM - Again, this uses the same format as the received PM packet, but parameter 1 is the target
+user, not the sending user.
+Example PM packet: PM[SOH]Foo[SOH]Lorem ipsum dolor si amet.[CRLF]
+
+QUIT - This command has 1 parameter. The parameter is the user's username. This is used
+to tell the server to gracefully close the connection to the user's client. Current
+implementation allows for malicious users to remotely disconnect other users from the server
+but this is expected to be changed in the near future. Current packet structure will remain,
+but the parameter will be superfluous. This packet is not necessary, but it will let other
+users know that the user requested to log out from the server, instead of being disconnected.
+Example QUIT packet: QUIT[SOH]Foo[CRLF]
+
+PING - 1 parameter, this packet acts the same as the other PING packet.
+Example PING packet: PING[SOH]123456789[CRLF]
+
+PONG - 1 parameter, this packet is not required, but is an optional response
+to a server PING request.
+Read description of server-to-client PING and PONG packets to understand the usage of these.
+Example PONG packet: PONG[SOH]123456789[CRLF]
+
+AWAY - 2 optional parameters, this packet will mark the sending user as away, and tell everyone else
+that the user is away. The first optional parameter is a message to show when the user goes away,
+the second is whether to announce it to everyone or not, and can be either 0 or 1. (silent or announce)
+An example for the first parameter could be "Be right back, cutting the lawn." or "Sleeping for the night."
+Send this packet again to unmark the user as away. (any parameters are ignored)
+Example AWAY packet: AWAY[SOH]BRB, getting food![SOH]1[CRLF]
+
+(Documentation on the packets below is not complete, trial and error usually gets it right :P)
+
+MOTD - Optional single parameter, if using with parameter, user must have flag A set.
+
+LIST - No parameters. Server responds with LIST packet containing all online users.
+
+AUTH - Optional single parameter, parameter is hex-encoded MD5 hash of password, used to set flag A,
+without parameter, flag A is removed (if it was already set)
+Example: AUTH[SOH]0x010203040506[CRLF]
+
+KICK - Single parameter, the target's username. Used to kick target user from server.
+Sending user must have flag A set.
+
+MUTE - Single parameter, the target's username. Used to set flag M on target user.
+Sending user must have flag A set.
+
+NAME - Two parameters, current username, and new username respectively. Current username is
+forced to user's actual username unless sending user has flag R set.
+Can be used to change other users' usernames when flag R is set on sending user.
+
+DIE - One parameter, time (in seconds) before executing, default: 30. Shuts down the server. Must have flag R set.
+
+REHASH - No parameters. Rehash server configuration files. Must have flag R set.
+
+BAN - One parameter, the username to be banned. Once a username is banned, no clients can use it again.
+
+BANIP - One parameter, the username which owns the IP address to be banned. Once an IP address is banned,
+no clients can connect from it again, and all clients currently logged on with the offending IP address
+are kicked from the server. Must have flag R set.
+
+UNBAN - One parameter, the username or IP to remove from the banlist. Must have flag R set.
+
+RAW - Two parameters, the target username, and the data to be sent. Used much like PM, see Server to Client
+entry for detailed description of this packet.
