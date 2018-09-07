@@ -8,8 +8,7 @@
 - Public and private messaging
 - Pong responses to client pings
 - Join authentication
-- Single-client usernames
-- Announcements for joining, leaving, name changes, etc
+- Announcements for various actions
 - AFK support
 - User lists
 - User flags
@@ -17,9 +16,15 @@
 - Username changing
 - Graceful disconnects
 - Message of the Day
+- Getting user info
+- RAW opcode implementation (allows for file transfers, pinging other clients, client-side plugin communication with other clients, etc)
+
+## What's new compared to the official kSoft kChat server?
+- User authentication via password to keep your username safe
+- Multiple sessions per user
+- Pending private messages so your friends can tell you something important while you're offline
 
 ## What's left?
-- RAW opcode implementation (allows for file transfers, client-side plugin communication with other users, etc)
 - Admin and root authentication support
 - Kicking/banning users by username or IP
 - Pinging users at a set interval
