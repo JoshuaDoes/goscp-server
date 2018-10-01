@@ -1,10 +1,15 @@
 package main
 
 import (
+	"encoding/json"
 	"fmt"
+	"io/ioutil"
 	"log"
 	"net"
+	"os"
+	"os/signal"
 	"strings"
+	"syscall"
 	"time"
 
 	"golang.org/x/crypto/bcrypt"
@@ -38,31 +43,31 @@ type Session struct {
 // User stores data about a user
 type User struct {
 	//User details
-	Username     string
-	PasswordHash string
-	About        string
-	Sessions     []Session
+	Username     string    `json:"username"`
+	PasswordHash string    `json:"passwordHash"`
+	About        string    `json:"about"`
+	Sessions     []Session `json:"-"`
 
 	//User flags
-	Online bool
-	Mute   bool
-	Admin  bool
-	Root   bool
-	Ghost  bool
-	Away   bool
+	Online bool `json:"-"`
+	Mute   bool `json:"mute"`
+	Admin  bool `json:"admin"`
+	Root   bool `json:"root"`
+	Ghost  bool `json:"ghost"`
+	Away   bool `json:"away"`
 
 	//Pending private messages
-	PendingPMs []PrivateMessage
+	PendingPMs []PrivateMessage `json:"pendingPMs"`
 
 	//AFK data
-	AwayReason   string
-	AwayAnnounce bool
+	AwayReason   string `json:"awayReason"`
+	AwayAnnounce bool   `json:"awayAnnounce"`
 }
 
 // PrivateMessage stores data about a private message
 type PrivateMessage struct {
-	User    *User  //Pointer to the sending user
-	Message string //The message for the receiving user
+	User    *User  `json:"user"`    //Pointer to the sending user
+	Message string `json:"message"` //The message for the receiving user
 }
 
 // Write writes a packet to the session's TCP socket
@@ -196,9 +201,6 @@ func (s *Session) SendList() {
 
 	for _, user := range users {
 		if user.Ghost {
-			continue
-		}
-		if !user.Online {
 			continue
 		}
 
@@ -368,6 +370,7 @@ func handleClient(c *net.TCPConn) {
 				for _, pm := range session.User.PendingPMs {
 					session.SendPMFrom(pm.User.Username, pm.Message)
 				}
+				session.User.PendingPMs = make([]PrivateMessage, 0)
 			case "QUIT":
 				session.Close()
 				break
@@ -505,6 +508,11 @@ func handleClient(c *net.TCPConn) {
 }
 
 func main() {
+	err := stateRestore()
+	if err != nil {
+		log.Fatalf("Error restoring missing or corrupt state: %v", err)
+	}
+
 	listenAddr, err := net.ResolveTCPAddr("tcp", srvHost+":"+srvPort)
 	if err != nil {
 		log.Fatalf("Error resolving bind address [%s:%s]: %v", srvHost, srvPort, err)
@@ -518,13 +526,24 @@ func main() {
 
 	log.Println("Listening on [" + srvHost + ":" + srvPort + "]")
 
-	for {
-		conn, err := server.AcceptTCP()
-		if err != nil {
-			log.Printf("Error accepting connection: %v", err)
-		}
+	go func() {
+		for {
+			conn, err := server.AcceptTCP()
+			if err != nil {
+				log.Printf("Error accepting connection: %v", err)
+			}
 
-		go handleClient(conn)
+			go handleClient(conn)
+		}
+	}()
+
+	sc := make(chan os.Signal, 1)
+	signal.Notify(sc, syscall.SIGINT, syscall.SIGTERM, os.Interrupt, os.Kill)
+	<-sc
+
+	err = stateSave()
+	if err != nil {
+		log.Fatalf("Error saving state: %v", err)
 	}
 }
 
@@ -542,5 +561,36 @@ func getUser(username string) *User {
 			return user
 		}
 	}
+	return nil
+}
+
+func stateSave() error {
+	usersJSON, err := json.Marshal(users)
+	if err != nil {
+		return err
+	}
+
+	err = ioutil.WriteFile("users.db", usersJSON, 0644)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+func stateRestore() error {
+	if _, err := os.Stat("users.db"); os.IsNotExist(err) {
+		return nil
+	}
+
+	usersJSON, err := ioutil.ReadFile("users.db")
+	if err != nil {
+		return err
+	}
+
+	err = json.Unmarshal(usersJSON, &users)
+	if err != nil {
+		return err
+	}
+
 	return nil
 }
